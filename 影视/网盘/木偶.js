@@ -1915,7 +1915,7 @@ async function detail(params) {
           if (episodes.length > 0) {
             // 如果是夸克/UC的多线路，使用 "网盘名-线路名" 作为播放源名称
             let finalSourceName = sourceName;
-            if (driveInfo.driveType === "quark" || driveInfo.driveType === "uc") {
+            if (driveInfo.driveType === "quark") {
               finalSourceName = `${displayName}-${sourceName}`;
             }
 
