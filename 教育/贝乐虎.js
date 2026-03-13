@@ -1,7 +1,7 @@
 // @name 贝乐虎
 // @author 
-// @description 刮削：不支持，弹幕：不支持，嗅探：支持
-// @version 1.0.1
+// @description 刮削：不支持，弹幕：不支持，嗅探：不支持
+// @version 1.0.2
 // @downloadURL https://xget.xi-xu.me/gh/Silent1566/OmniBox-Spider/raw/refs/heads/main/教育/贝乐虎.js
 /**
  * ============================================================================
