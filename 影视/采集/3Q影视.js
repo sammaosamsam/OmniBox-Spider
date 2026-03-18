@@ -2,7 +2,7 @@
 // @author W.Q, @wujiwanmei, @lucky_TJQ, tcxp, @shortai
 // @description 刮削：支持，弹幕：支持，嗅探：支持
 // @dependencies: axios, crypto
-// @version 1.0.2
+// @version 1.0.3
 // @downloadURL https://gh-proxy.org/https://github.com/Silent1566/OmniBox-Spider/raw/refs/heads/main/影视/采集/3Q影视.js
 
 /**
@@ -822,6 +822,72 @@ const buildScrapedEpisodeName = (scrapeData, mapping, originalName) => {
 };
 
 /**
+ * 从映射中提取文件ID（兼容不同字段名）
+ * @param {Object} mapping - 刮削映射对象
+ * @returns {string} 文件ID
+ */
+const getMappingFileId = (mapping) => {
+    if (!mapping || typeof mapping !== "object") return "";
+    return String(mapping.fileId || mapping.file_id || mapping.fid || "");
+};
+
+/**
+ * 从 fid 提取集索引（sid#line#epIndex -> epIndex）
+ * @param {string} fid - 文件ID
+ * @returns {string} 集索引
+ */
+const getFidEpisodeIndex = (fid) => {
+    const parts = String(fid || "").split("#");
+    if (parts.length < 3) return "";
+    return String(parts[parts.length - 1] || "");
+};
+
+/**
+ * 规范化集数名称
+ * @param {string} name - 集数名称
+ * @returns {string} 规范化后的名称
+ */
+const normalizeEpisodeName = (name) => String(name || "").trim().toLowerCase();
+
+/**
+ * 根据 fid 查找刮削映射（兼容 fileId/file_id/fid）
+ * @param {Array} videoMappings - 映射数组
+ * @param {string} fid - 文件ID
+ * @param {string} fallbackEpisodeName - 备用集数名
+ * @returns {Object|null} 匹配到的映射
+ */
+const findMappingByFid = (videoMappings, fid, fallbackEpisodeName = "") => {
+    const target = String(fid || "");
+    if (!target || !Array.isArray(videoMappings) || videoMappings.length === 0) {
+        return null;
+    }
+
+    // 1. 优先按完整 fid 精确匹配
+    const directMapping = videoMappings.find((m) => getMappingFileId(m) === target);
+    if (directMapping) return directMapping;
+
+    // 2. 兼容仅刮削首线路的情况：按 epIndex 回退匹配
+    const targetEpisodeIndex = getFidEpisodeIndex(target);
+    if (targetEpisodeIndex) {
+        const indexMatched = videoMappings.find((m) => getFidEpisodeIndex(getMappingFileId(m)) === targetEpisodeIndex);
+        if (indexMatched) return indexMatched;
+    }
+
+    // 3. 兜底：按集数名称匹配
+    const normalizedName = normalizeEpisodeName(fallbackEpisodeName);
+    if (normalizedName) {
+        const nameMatched = videoMappings.find((m) => {
+            const mappingEpisodeName = normalizeEpisodeName(m?.episodeName);
+            const mappingFileName = normalizeEpisodeName(m?.file_name || m?.name);
+            return mappingEpisodeName === normalizedName || mappingFileName === normalizedName;
+        });
+        if (nameMatched) return nameMatched;
+    }
+
+    return null;
+};
+
+/**
  * 构建刮削后的弹幕文件名
  * @param {Object} scrapeData - 刮削数据
  * @param {string} scrapeType - 刮削类型（movie/tv）
@@ -1201,7 +1267,7 @@ async function detail(params) {
         // 应用刮削结果到集数名称
         for (const source of playSources) {
             for (const ep of source.episodes || []) {
-                const mapping = videoMappings.find((m) => m?.fileId === ep._fid);
+                const mapping = findMappingByFid(videoMappings, ep._fid, ep._rawName || ep.name || "");
                 if (!mapping) continue;
 
                 const oldName = ep.name;
@@ -1351,7 +1417,7 @@ async function play(params) {
         if (videoIdForScrape) {
             const metadata = await OmniBox.getScrapeMetadata(videoIdForScrape);
             if (metadata && metadata.scrapeData) {
-                const mapping = (metadata.videoMappings || []).find((m) => m?.fileId === playMeta?.fid);
+                const mapping = findMappingByFid(metadata.videoMappings || [], playMeta?.fid, playMeta?.e || episodeName || "");
                 scrapedDanmuFileName = buildScrapedDanmuFileName(
                     metadata.scrapeData,
                     metadata.scrapeType || "",
