@@ -2,7 +2,7 @@
 // @author 
 // @description 刮削：支持，弹幕：支持，嗅探：支持
 // @dependencies: axios, crypto
-// @version 1.0.3
+// @version 1.0.4
 // @downloadURL https://gh-proxy.org/https://github.com/Silent1566/OmniBox-Spider/raw/refs/heads/main/影视/采集/哇哇影视.js
 
 const crypto = require('crypto');
@@ -400,12 +400,17 @@ async function home(params) {
         });
     }
 
+    OmniBox.log("info", `homeList: ${JSON.stringify(homeList)}`)
+
     let list = [];
     if (homeList && homeList.data && homeList.data.list && homeList.data.list[0]) {
         list = homeList.data.list[0].vod_list || [];
-        list = list.forEach(it => {
-            it.vod_id = it.vod_id.toString();
-        });
+        list = list.map((it) => ({
+            vod_id: String(it.vod_id || ""),
+            vod_name: it.vod_name || "",
+            vod_pic: it.vod_pic || "",
+            vod_remarks: it.vod_remarks || ""
+        }));
     }
 
     const r = {
