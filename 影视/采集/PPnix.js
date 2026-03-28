@@ -1,8 +1,8 @@
 // @name PPnix
 // @author 梦
-// @description 刮削：暂不支持，弹幕：暂不支持，分类筛选：支持
+// @description 刮削：暂不支持，弹幕：暂不支持，分类筛选：支持，多线路播放：支持
 // @dependencies: axios, cheerio
-// @version 1.4.0
+// @version 1.5.0
 // @downloadURL https://www.ppnix.com/cn/
 
 const OmniBox = require("omnibox_sdk");
@@ -29,6 +29,12 @@ const LANG_PATH = normalizeBasePath(BASE_PATH);
 
 const PPNIX_SEGMENT_HOST = process.env.PPNIX_SEGMENT_HOST || "https://1.ppnix.com";
 const PPNIX_REWRITE_M3U8 = process.env.PPNIX_REWRITE_M3U8 !== "0";
+const PPNIX_SEGMENT_HOSTS = uniqValues(
+  String(process.env.PPNIX_SEGMENT_HOSTS || "")
+    .split(/[;,\s]+/)
+    .map((v) => v.trim())
+    .filter(Boolean)
+);
 
 const SORT_MAP = {
   time: "newstime",
@@ -281,6 +287,32 @@ function buildM3u8DataUrl(m3u8Text) {
   return `data:application/vnd.apple.mpegurl;base64,${Buffer.from(String(m3u8Text || ""), "utf8").toString("base64")}`;
 }
 
+function getSegmentHosts() {
+  const hosts = PPNIX_SEGMENT_HOSTS.length ? PPNIX_SEGMENT_HOSTS : [PPNIX_SEGMENT_HOST];
+  return uniqValues(hosts.filter((v) => /^https?:\/\//i.test(String(v || ""))));
+}
+
+function rewritePpnixM3u8WithHost(m3u8Text, host) {
+  const cleanHost = text(host).replace(/\/+$/, "");
+  const keyUrl = `${BASE_URL}/info/m3u8/key`;
+  return String(m3u8Text || "")
+    .replace(/URI="\.\.\/key"/g, `URI="${keyUrl}"`)
+    .replace(/https:\/\/ipfs\.ppnix\.com\/ipfs\//g, `${cleanHost}/ipfs/`);
+}
+
+function buildPlayUrlsForHosts(episodeName, rawM3u8, hosts = []) {
+  const urls = [];
+  for (const host of hosts) {
+    const cleanHost = text(host).replace(/^https?:\/\//i, "");
+    const rewritten = rewritePpnixM3u8WithHost(rawM3u8, host);
+    urls.push({
+      name: hosts.length > 1 ? `${episodeName} · ${cleanHost}` : episodeName,
+      url: buildM3u8DataUrl(rewritten),
+    });
+  }
+  return urls;
+}
+
 async function home(params, context) {
   try {
     const [homePage, moviePage, tvPage] = await Promise.all([
@@ -445,27 +477,32 @@ async function play(params, context) {
     const episodeName = text(meta.episodeName || param || "播放");
     const subtitles = buildSubtitleSelector(infoId, param);
 
-    let finalUrl = sourceUrl;
-    let parse = 0;
-
     if (PPNIX_REWRITE_M3U8) {
       try {
         const rawM3u8 = await fetchText(sourceUrl, header);
-        const rewritten = rewritePpnixM3u8(rawM3u8, referer);
-        finalUrl = buildM3u8DataUrl(rewritten);
-        OmniBox.log("info", `[play] 已重写 m3u8: infoId=${infoId}, param=${param}, key=/info/m3u8/key, segmentHost=${PPNIX_SEGMENT_HOST}`);
+        const hosts = getSegmentHosts();
+        const urls = buildPlayUrlsForHosts(episodeName, rawM3u8, hosts);
+        if (urls.length) {
+          OmniBox.log("info", `[play] 已生成多线路: infoId=${infoId}, param=${param}, hosts=${hosts.join(",")}`);
+          return {
+            urls,
+            flag: "PPnix",
+            header,
+            parse: 0,
+            danmaku: [],
+            subtitles,
+          };
+        }
       } catch (error) {
-        parse = 1;
-        finalUrl = sourceUrl;
-        OmniBox.log("warn", `[play] m3u8 重写失败，回退原始地址: ${error.message}`);
+        OmniBox.log("warn", `[play] m3u8 多线路生成失败，回退原始地址: ${error.message}`);
       }
     }
 
     return {
-      urls: [{ name: episodeName, url: finalUrl }],
+      urls: [{ name: episodeName, url: sourceUrl }],
       flag: "PPnix",
       header,
-      parse,
+      parse: 1,
       danmaku: [],
       subtitles,
     };
