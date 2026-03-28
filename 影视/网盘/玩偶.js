@@ -517,21 +517,25 @@ function buildScrapedFileName(scrapeData, mapping, originalFileName) {
     return originalFileName;
   }
 
-  // 查找对应的剧集信息
+  // 优先使用 scrapeData.episodes 中的正式剧集标题
   if (scrapeData && scrapeData.episodes && Array.isArray(scrapeData.episodes)) {
     for (const episode of scrapeData.episodes) {
       if (episode.episodeNumber === mapping.episodeNumber && episode.seasonNumber === mapping.seasonNumber) {
-        // 使用剧集标题作为文件名
         if (episode.name) {
-          return `${episode.episodeNumber}.${episode.name}`;
+          return `${mapping.episodeNumber}.${episode.name}`;
         }
         break;
       }
     }
   }
 
-  // 如果没有找到对应的剧集信息,返回原始文件名
-  return originalFileName;
+  // 其次使用 mapping 自身带回的剧集标题
+  if (mapping.episodeName) {
+    return `${mapping.episodeNumber}.${mapping.episodeName}`;
+  }
+
+  // 最后至少补上集号,避免仍然只是 01.mkv / 02.mkv 这种原样返回
+  return `${mapping.episodeNumber}.${originalFileName}`;
 }
 
 /**
@@ -727,6 +731,8 @@ async function detail(params) {
                 if (newFileName && newFileName !== fileName) {
                   fileName = newFileName;
                   OmniBox.log("info", `应用刮削文件名: ${file.file_name} -> ${fileName}`);
+                } else {
+                  OmniBox.log("info", `刮削已命中但未改名: file=${file.file_name}, epNum=${mapping.episodeNumber ?? "N/A"}, epName=${mapping.episodeName || ""}, confidence=${mapping.confidence ?? "N/A"}, scrapeType=${scrapeType || "unknown"}`);
                 }
                 break;
               }
